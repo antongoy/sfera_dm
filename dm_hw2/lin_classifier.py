@@ -44,7 +44,6 @@ class Classifier:
         k += 1
 
         while k < self.n_iteration:
-
             rand_num = rnd.randint(0, n_data_samples - 1)
 
             cur_eta = self.__recompute_eta(cur_iter=k)
@@ -73,7 +72,51 @@ class Classifier:
 
 
 def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+    return 1.0 / (1 + np.exp(-x))
+
+
+def metrics(target_vars, predict_vars, label):
+    tp = tn = fp = fn = 0
+
+    for target, predict in izip(target_vars, predict_vars):
+        if target == predict and target == label:
+            tp += 1
+        if target == predict and target != label:
+            tn += 1
+        if target != predict and target != label:
+            fp += 1
+        if target != predict and target == label:
+            fn += 1
+
+    return tp, tn, fp, fn
+
+
+def accuracy_compute(target_vars, predict_vars):
+    tp1, tn1, fp1, fn1 = metrics(target_vars, predict_vars, label=1)
+    tp2, tn2, fp2, fn2 = metrics(target_vars, predict_vars, label=2)
+    tp3, tn3, fp3, fn3 = metrics(target_vars, predict_vars, label=3)
+
+    accuracy1 = float(tp1 + tn1) / (tp1 + tn1 + fp1 + fn1)
+    accuracy2 = float(tp2 + tn2) / (tp2 + tn2 + fp2 + fn2)
+    accuracy3 = float(tp3 + tn3) / (tp3 + tn3 + fp3 + fn3)
+
+    return (accuracy1 + accuracy2 + accuracy3) / 3.0
+
+
+def recall_compute(target_vars, predict_vars):
+    tp1, tn1, fp1, fn1 = metrics(target_vars, predict_vars, label=1)
+    tp2, tn2, fp2, fn2 = metrics(target_vars, predict_vars, label=2)
+    tp3, tn3, fp3, fn3 = metrics(target_vars, predict_vars, label=3)
+
+    return float(tp1 + tp2 + tp3) / (tp1 + fn1 + tp2 + fn2 + tp3 + fn3)
+
+
+def precision_compute(target_vars, predict_vars):
+    tp1, tn1, fp1, fn1 = metrics(target_vars, predict_vars, label=1)
+    tp2, tn2, fp2, fn2 = metrics(target_vars, predict_vars, label=2)
+    tp3, tn3, fp3, fn3 = metrics(target_vars, predict_vars, label=3)
+
+    return float(tp1 + tp2 + tp3) / (tp1 + fp1 + tp2 + fp2 + tp3 + fp3)
 
 
 def transform_target_vars(target_vars, class_num):
@@ -90,7 +133,6 @@ def decision_function(first_predict, second_predict, third_predict):
 
 
 def main():
-
     with open('data_set.csv', 'rb') as data_file:
         data = csv.reader(data_file)
 
