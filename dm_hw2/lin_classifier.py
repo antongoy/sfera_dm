@@ -1,19 +1,19 @@
 import csv
 import numpy as np
 import random as rnd
+import matplotlib.pyplot as plt
 
 from itertools import izip
-
+from scipy.integrate import trapz
 from sklearn.utils import shuffle
 from sklearn.preprocessing import scale
 from sklearn.cross_validation import KFold
-from sklearn.metrics import accuracy_score, recall_score, precision_score
 
 __author__ = 'anton-goy'
 
 
 class Classifier:
-    def __init__(self, n_features, epsilon=0.001, eta0=0.001, alpha=0.01, num_iteration=1000):
+    def __init__(self, n_features, epsilon=0.00001, eta0=0.001, alpha=1, num_iteration=1000):
         self.epsilon = np.full(n_features + 1, epsilon)
         self.eta0 = eta0
         self.n_iteration = num_iteration
@@ -40,7 +40,7 @@ class Classifier:
         cur_x = norm_data_set[rand_num]
         cur_y = target_vars[rand_num]
         cur_gradient = self.__compute_gradient(self.w, cur_x, cur_y)
-        self.w = (1 - self.alpha) * self.w - cur_eta * cur_gradient
+        self.w = (1 - cur_eta * self.alpha) * self.w - cur_eta * cur_gradient
         k += 1
 
         while k < self.n_iteration:
@@ -50,7 +50,7 @@ class Classifier:
             cur_x = norm_data_set[rand_num]
             cur_y = target_vars[rand_num]
             cur_gradient = self.__compute_gradient(self.w, cur_x, cur_y)
-            self.w = (1 - self.alpha) * self.w - cur_eta * cur_gradient
+            self.w = (1 - cur_eta * self.alpha) * self.w - cur_eta * cur_gradient
             k += 1
 
     def predict_proba(self, test_data_set):
@@ -69,6 +69,19 @@ class Classifier:
             probabilities.append(1 - proba)
 
         return probabilities
+
+    def predict_threshold(self, test_data_set, threshold):
+        probabilities = self.predict_proba(test_data_set)
+
+        predict_thres = []
+
+        for proba in probabilities:
+            if proba > threshold:
+                predict_thres.append(0)
+            else:
+                predict_thres.append(1)
+
+        return predict_thres
 
 
 def sigmoid(x):
@@ -103,20 +116,28 @@ def accuracy_compute(target_vars, predict_vars):
     return (accuracy1 + accuracy2 + accuracy3) / 3.0
 
 
-def recall_compute(target_vars, predict_vars):
-    tp1, tn1, fp1, fn1 = metrics(target_vars, predict_vars, label=1)
-    tp2, tn2, fp2, fn2 = metrics(target_vars, predict_vars, label=2)
-    tp3, tn3, fp3, fn3 = metrics(target_vars, predict_vars, label=3)
+def recall_compute(target_vars, predict_vars, label):
+    tp, tn, fp, fn = metrics(target_vars, predict_vars, label=label)
 
-    return float(tp1 + tp2 + tp3) / (tp1 + fn1 + tp2 + fn2 + tp3 + fn3)
+    return float(tp) / (tp + fn)
 
 
-def precision_compute(target_vars, predict_vars):
-    tp1, tn1, fp1, fn1 = metrics(target_vars, predict_vars, label=1)
-    tp2, tn2, fp2, fn2 = metrics(target_vars, predict_vars, label=2)
-    tp3, tn3, fp3, fn3 = metrics(target_vars, predict_vars, label=3)
+def precision_compute(target_vars, predict_vars, label):
+    tp, tn, fp, fn = metrics(target_vars, predict_vars, label=label)
 
-    return float(tp1 + tp2 + tp3) / (tp1 + fp1 + tp2 + fp2 + tp3 + fp3)
+    return float(tp) / (tp + fp)
+
+
+def tpr_compute(target_vars, predict_vars, label):
+    tp, _, _, fn = metrics(target_vars, predict_vars, label=label)
+
+    return float(tp) / (tp + fn)
+
+
+def fpr_compute(target_vars, predict_vars, label):
+    _, tn, fp, _ = metrics(target_vars, predict_vars, label=label)
+
+    return float(fp) / (fp + tn)
 
 
 def transform_target_vars(target_vars, class_num):
@@ -132,6 +153,19 @@ def decision_function(first_predict, second_predict, third_predict):
                         izip(first_predict, second_predict, third_predict)))
 
 
+def area_compute(fprs, tprs):
+    S = 0
+    for i in xrange(len(fprs)):
+        if i == 0:
+            continue
+        if i == 1:
+            S += 0.5 * fprs[i] * tprs[i]
+            continue
+        S += 0.5 * (tprs[i-1] - tprs[i-2] + tprs[i]) * (fprs[i] - fprs[i-1])
+
+    return S
+
+
 def main():
     with open('data_set.csv', 'rb') as data_file:
         data = csv.reader(data_file)
@@ -145,7 +179,7 @@ def main():
         data_set = data_set[:, 1:]
 
         scale(data_set, copy=False)
-
+        #data_set,  valid_set, target_vars, valid_target = train_test_split(data_set, target_vars,  test_size=0.9)
         folds = 5
         cross_validation_kfold = KFold(data_set.shape[0], n_folds=folds)
 
@@ -160,8 +194,12 @@ def main():
         third_classifier = Classifier(n_features, eta0=0.1)
 
         accuracy = 0
-        recall = 0
-        precision = 0
+        first_recall = 0
+        second_recall = 0
+        third_recall = 0
+        first_precision = 0
+        second_precision = 0
+        third_precision = 0
 
         for train_indices, test_indices in cross_validation_kfold:
             first_classifier.fit(data_set[train_indices], first_target_vars[train_indices])
@@ -176,18 +214,77 @@ def main():
                                           second_predict_vars,
                                           third_predict_vars)
 
-            accuracy += accuracy_score(target_vars[test_indices], predicted)
-            recall += recall_score(target_vars[test_indices], predicted)
-            precision += precision_score(target_vars[test_indices], predicted)
+            accuracy += accuracy_compute(target_vars[test_indices], predicted)
+            first_recall += recall_compute(target_vars[test_indices], predicted, label=1)
+            second_recall += recall_compute(target_vars[test_indices], predicted, label=2)
+            third_recall += recall_compute(target_vars[test_indices], predicted, label=3)
+            first_precision += precision_compute(target_vars[test_indices], predicted, label=1)
+            second_precision += precision_compute(target_vars[test_indices], predicted, label=2)
+            third_precision += precision_compute(target_vars[test_indices], predicted, label=3)
 
         accuracy /= folds
-        recall /= folds
-        precision /= folds
+        first_recall /= folds
+        second_recall /= folds
+        third_recall /= folds
+        first_precision /= folds
+        second_precision /= folds
+        third_precision /= folds
 
-        print 'Cross-validation: '
+        thresholds = np.linspace(0, 1, num=20)
+        first_tprs = []
+        first_fprs = []
+        
+        second_tprs = []
+        second_fprs = []
+        
+        third_tprs = []
+        third_fprs = []
+
+        for thres in thresholds:
+            predict_threshold = first_classifier.predict_threshold(data_set, thres)
+            first_tpr = tpr_compute(first_target_vars, predict_threshold, label=1)
+            first_fpr = fpr_compute(first_target_vars, predict_threshold, label=1)
+            first_tprs.append(first_tpr)
+            first_fprs.append(first_fpr)
+            
+        for thres in thresholds:
+            predict_threshold = second_classifier.predict_threshold(data_set, thres)
+            second_tpr = tpr_compute(second_target_vars, predict_threshold, label=1)
+            second_fpr = fpr_compute(second_target_vars, predict_threshold, label=1)
+            second_tprs.append(second_tpr)
+            second_fprs.append(second_fpr)
+            
+        for thres in thresholds:
+            predict_threshold = third_classifier.predict_threshold(data_set, thres)
+            third_tpr = tpr_compute(third_target_vars, predict_threshold, label=1)
+            third_fpr = fpr_compute(third_target_vars, predict_threshold, label=1)
+            third_tprs.append(third_tpr)
+            third_fprs.append(third_fpr)
+
+        plt.figure(figsize=(20, 10))
+
+        plt.subplot(131)
+        plt.plot(first_fprs, first_tprs)
+
+        plt.subplot(132)
+        plt.plot(second_fprs, second_tprs)
+
+        plt.subplot(133)
+        plt.plot(third_fprs, third_tprs)
+
+        plt.show()
+
         print '\tAccuracy', accuracy
-        print '\tRecall', recall
-        print '\tPrecision', precision
+        print '\tRecall For 1st class', first_recall
+        print '\tRecall For 2nd class', second_recall
+        print '\tRecall For 3d class', third_recall
+        print '\tPrecision For 1st class', first_precision
+        print '\tPrecision For 2nd class', second_precision
+        print '\tPrecision For 3d class', third_precision
+        print '\n'
+        print '\tFirst AUC', trapz(first_tprs, first_fprs)
+        print '\tSecond AUC', trapz(second_tprs, second_fprs)
+        print '\tThird AUC', trapz(third_tprs, third_fprs)
 
 
 if __name__ == '__main__':
