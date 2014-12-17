@@ -1,7 +1,6 @@
 import numpy as np
 
 from itertools import tee, izip
-from sklearn.datasets import load_iris
 
 __author__ = 'anton-goy'
 
@@ -33,7 +32,7 @@ def regression_impurity(targets):
     return np.sum(np.power(targets - targets.mean(), 2))
 
 
-class RegressionTree():
+class DecisionTreeRegressor():
     def __init__(self, max_depth=2):
         self.tree = {}
         self.max_depth = max_depth
@@ -100,7 +99,7 @@ class RegressionTree():
         return np.array([self.__predict_inside(sample, self.tree) for sample in test_set])
 
     def __predict_inside(self, sample, tree):
-        if type(tree) == np.float64:
+        if type(tree) != type({}):
             return tree
 
         for node, subtree in tree.iteritems():
